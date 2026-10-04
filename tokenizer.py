@@ -66,3 +66,60 @@ for i in range(num_merges):
 
     print(f"Merge {i+1}: pair{pair}-> token {idx}")
 print("Final compressed length:",len(ids))
+
+#1. Start with the base 256 individual byte tokens
+#bytes([idx]) creates a python bytes object of a single byte (0 to 255)
+vocab = {idx: bytes([idx]) for idx in range(256)}
+
+#2. for every merge we learned, build up its full byte representatin
+for(p0,p1), idx in merges.items():
+    vocab[idx]= vocab[p0]+vocab[p1]
+
+def decode(ids):
+    #lookup the bytes for each token ID
+    tokens = b"".join(vocab[idx] for idx in ids)
+    #convert rew bytes back to human string 
+    #errors = "replace" replaces invalid bytes sequences with the unicode replacement character instead of crashing
+    text =  tokens.decode("utf-8", errors="replace")
+    return text
+
+#quick test on our trained ids:
+print("\n____TESTING DECODE_____")
+reconstructed_text = decode(ids)
+print("Decoded Text:",reconstructed_text)
+print("Matches original:",reconstructed_text==text)
+
+def encode(text):
+    #1. Convert the text to initial list of raw byte integers
+    tokens = list(text.encode("utf-8"))
+
+    # A text needs at least 2 tokens to have any adjacent pairs
+    while len(tokens)>=2:
+        #Get counts of all adjacent pairs currently in our text 
+        stats = get_stats(tokens)
+
+        #Find the pair in 'stats' that has the LOWEST merge index in our merges dict.
+        #If a pair was never merged during training, we treat its rank as infinity (float("inf"))
+        pair = min(stats, key = lambda p: merges.get(p,float("inf")))
+
+        # If the  best pair is not in merges, nothing else can be merged!
+        if pair not in merges:
+            break
+
+        #Get the new ID assigned to this pair and merge it
+        idx = merges[pair]
+        tokens = merge(tokens,pair,idx)
+    return tokens
+
+print("\n____TESTING ENCODE & ROUND_TRIP_____")
+test_phrase = "The quick fox is quick."
+encoded_tokens = encode(test_phrase)
+decoded_phrase = decode(encoded_tokens)
+
+print("Original phrase:",test_phrase)
+print("Encoded tokens:",encoded_tokens)
+print("Decoded phrase:",decoded_phrase)
+
+#verify looslessness
+assert decoded_phrase==test_phrase, "Round trip failed! Decoded phrase does not match original."
+print("Success! ENCODE-> Decode is 100% looseless")
